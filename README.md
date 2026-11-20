@@ -15,13 +15,18 @@ does. The router's own log shows nothing, and the signal stays good.
 - **17 Nov 2026, about 17:30 to 17:55:** every lookup from the gateway timed out while the router
   stayed reachable on the LAN. A router reboot fixed it within seconds. Smaller bursts came before
   that, on 16 and 17 Nov.
-- **19 Nov 2026, 18:30 to 18:52:** the watchdog logged seven short outages of 30 to 90 s. Only DNS
-  failed; plain TCP to 1.1.1.1 and 8.8.8.8 kept working, and the router showed 5G SA with 3 or 4
-  bars. The cause wasn't the router: the ISP transparently intercepts all UDP port 53 traffic, and
-  its interceptor falters under evening load. Switching the local resolver to encrypted upstream
-  DNS (DoH/DoT) went past it.
+- **19 Nov 2026, 18:30 to 18:52:** the watchdog logged seven short outages of 30 to 90 s. New TCP
+  connections to 1.1.1.1 and 8.8.8.8 still opened, but the lookups failed, and the router showed 5G
+  SA with 3 or 4 bars. The ISP also intercepts plain UDP port 53 traffic, so at first this looked
+  like its DNS faltering, and the local resolver was moved to encrypted DNS (DoH/DoT).
+- **20 Nov 2026, 19:20 and 22:24:** two more outages of over 4 minutes, this time with encrypted
+  DNS. Connections still opened but no data came through (`outage: stalled`). The router's own log
+  shows the radio link up all along (same cell, normal signal). A data disconnect and reconnect in
+  the router's web UI did not help; only a full reboot, which also re-registers with the network,
+  brought the internet back.
 
-The watchdog tells those two cases apart, which is the evidence to take to an ISP.
+Every hang so far started in the evening, between about 17:30 and 22:30. Whether the cause is the
+router or an overloaded cell is still open; the watchdog's log is the evidence for either.
 
 ## What it does
 
@@ -32,21 +37,24 @@ Every 30 seconds it checks the internet directly, past any local DNS server:
   memory. NXDOMAIN is the expected answer.
 - **TCP:** a connection to 1.1.1.1:443 and 8.8.8.8:443.
 
-If either check fails on every target, the internet is down. Each change is written as a JSON line
+The DNS check is a full encrypted exchange, so it also proves that data flows; the TCP check only
+proves that a connection opens. If either check fails on every target, the internet is down, and
+the event says which way: `stalled` (connections open, no data gets through) or `offline` (not even
+a connection opens). Each change is written as a JSON line
 to `/var/lib/wan-watchdog/events.jsonl` and to the journal, together with the router's radio state
 (read from its status API, no login needed):
 
 ```json
-{"at": "2026-11-19T18:51:18+0100", "event": "down", "probes": {"dns": false, "tcp": true}, "router_reachable": true, "netinfo": {"network_type": "SA", "signalbar": "3", "wan_active_band": "n78", "network_provider": "<ISP>", "nr5g_cell_id": "<cell>", "nr5g_pci": "<pci>", "domain_stat": "PS_ONLY", "lock_nr_cell": ""}}
-{"at": "2026-11-19T18:52:42+0100", "event": "up", "down_seconds": 90, "reboots": 0}
+{"at": "2026-11-20T19:20:07+0100", "event": "down", "outage": "stalled", "probes": {"dns": false, "tcp": true}, "router_reachable": true, "netinfo": {"network_type": "SA", "signalbar": "3", "wan_active_band": "n78", "network_provider": "<ISP>", "nr5g_cell_id": "<cell>", "nr5g_pci": "<pci>", "domain_stat": "PS_ONLY", "lock_nr_cell": ""}}
+{"at": "2026-11-20T19:25:30+0100", "event": "up", "down_seconds": 330, "reboots": 1}
 ```
 
-`probes_changed` records when an outage goes from DNS-only to all traffic, and `up` records how
-long it lasted.
+`probes_changed` records when an outage changes between `stalled` and `offline`, and `up` records
+how long it lasted.
 
 ### When it reboots the router
 
-After **4 minutes down**, it logs in to the router's web API the way the router's own UI does
+After **2 minutes down**, it logs in to the router's web API the way the router's own UI does
 (SHA-256 of SHA-256(password) + salt) and calls `zwrt_mc.device.manager.device_reboot`. It only
 does that when all of these hold:
 
@@ -93,7 +101,7 @@ whatever is there:
 | --- | --- | --- |
 | `router` | `192.168.0.1` | The router's LAN address. Set it before installing if yours differs. |
 | `interval` | `30` | Seconds between checks |
-| `reboot_after` | `240` | Seconds down before a reboot |
+| `reboot_after` | `120` | Seconds down before a reboot |
 | `cooldown` | `1800` | Minimum seconds between reboots |
 | `max_reboots`, `window` | `3`, `21600` | At most this many reboots per window |
 | `auto_reboot` | `true` | `false` = log only |
@@ -122,14 +130,14 @@ There are 12 offline tests with a fake clock, probe and router. They cover:
 
 - quiet while the internet is up
 - a short drop is logged without a reboot
-- a reboot after 4 minutes, with the stored password
+- a reboot after 2 minutes, with the stored password
 - the cooldown and the limit of 3 per 6 hours
 - no reboot while the router itself is unreachable
 - a rejected login stops further attempts
 - log-only and dry-run modes
 - a missing password file
 - state survives a restart
-- DNS-only failures are labelled
+- stalls and full outages are labelled
 - the login hash matches the router UI
 - a fake DNS answer is rejected
 

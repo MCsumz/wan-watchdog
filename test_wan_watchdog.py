@@ -96,9 +96,9 @@ class WatchdogTests(unittest.TestCase):
         last = json.loads((self.dir / "events.jsonl").read_text().splitlines()[-1])
         self.assertEqual(last["down_seconds"], 120)
 
-    def test_reboots_after_four_minutes_with_the_stored_password(self):
+    def test_reboots_after_two_minutes_with_the_stored_password(self):
         self.probe.up = False
-        self.run_for(240)
+        self.run_for(120)
         self.assertEqual(self.router.reboots, [])
         self.run_for(30)
         self.assertEqual(self.router.reboots, ["secret"])
@@ -106,7 +106,7 @@ class WatchdogTests(unittest.TestCase):
 
     def test_cooldown_and_rate_limit(self):
         self.probe.up = False
-        self.run_for(1800)  # reboot at 4 minutes, then 30 minutes of cooldown
+        self.run_for(1800)  # reboot at 2 minutes, then 30 minutes of cooldown
         self.assertEqual(len(self.router.reboots), 1)
         self.assertIn("reboot_skipped", self.events())
         self.run_for(5 * 3600)  # cooldowns would allow more; the limit is 3 per 6 hours
@@ -155,15 +155,16 @@ class WatchdogTests(unittest.TestCase):
         self.run_for(300)
         self.assertEqual(len(self.router.reboots), 1)
 
-    def test_dns_only_failure_counts_as_down_and_is_labelled(self):
+    def test_stall_counts_as_down_and_is_labelled(self):
         self.probe.dns = False
-        self.run_for(120)
-        self.probe.tcp = False
         self.run_for(60)
+        self.probe.tcp = False
+        self.run_for(30)  # still under the 2 minutes before a reboot
         records = [json.loads(line) for line in (self.dir / "events.jsonl").read_text().splitlines()]
         self.assertEqual([r["event"] for r in records], ["down", "probes_changed"])
         self.assertEqual(records[0]["probes"], {"dns": False, "tcp": True})
         self.assertEqual(records[1]["probes"], {"dns": False, "tcp": False})
+        self.assertEqual([records[0]["outage"], records[1]["outage"]], ["stalled", "offline"])
 
     def test_login_hash_matches_router_ui(self):
         # The router UI: paswordAlgorithmsCookie(paswordAlgorithmsCookie(pw) + sault), SHA-256 as upper-case hex.

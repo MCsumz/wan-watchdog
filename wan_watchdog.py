@@ -3,7 +3,7 @@
 
 The router (tested: ZTE MC8830) sometimes stays attached to the mobile network but stops
 passing traffic until it is rebooted. Every 30 s this checks the internet directly, past any
-local DNS server. After 4 minutes down, with the router itself still reachable, it logs in to
+local DNS server. After 2 minutes down, with the router itself still reachable, it logs in to
 the router's own web API and reboots it, at most once per 30 minutes and 3 times per 6 hours.
 Python standard library only.
 """
@@ -27,7 +27,7 @@ STATE_DIR = Path("/var/lib/wan-watchdog")
 DEFAULTS = {
     "router": "192.168.0.1",
     "interval": 30,
-    "reboot_after": 240,
+    "reboot_after": 120,
     "cooldown": 1800,
     "max_reboots": 3,
     "window": 21600,
@@ -54,7 +54,7 @@ def dns_ok(server, timeout=3.0):
     """A DNS-over-HTTPS (or DNS-over-TLS) query for a random name.
 
     Some ISPs intercept all UDP port 53 traffic, and an interceptor can falter under
-    evening load (observed: DNS-only drops of 30-90 s while TCP kept working). Encrypted DNS goes
+    evening load (observed: lookups failing for 30-90 s while TCP connects worked). Encrypted DNS goes
     past the interception, so the probe uses it too and never reboots the router over the
     ISP's DNS. A fresh random name has to be resolved for real; NXDOMAIN is the expected answer.
     """
@@ -93,6 +93,12 @@ def tcp_ok(host, port=443, timeout=3.0):
             return True
     except OSError:
         return False
+
+
+def outage_kind(probes):
+    """'stalled': new connections still open, but no data gets through (the DNS probe is a full
+    encrypted exchange). 'offline': not even a connection opens."""
+    return "stalled" if probes.get("tcp") and not probes.get("dns") else "offline"
 
 
 class Probe:
@@ -219,13 +225,15 @@ class Watchdog:
             return
         if not state.get("down_since"):
             state.update(down_since=now, outage_reboots=0, last_block=None, probes=probes)
-            self.event("down", probes=probes, router_reachable=self.probe.router(), netinfo=self.netinfo())
+            self.event("down", outage=outage_kind(probes), probes=probes, router_reachable=self.probe.router(),
+                       netinfo=self.netinfo())
             self.save()
             return
         if probes != state.get("probes"):
-            # Shows whether only DNS failed (for example the ISP's DNS interception) or all traffic did.
+            # Shows whether connections still opened (a stall) or nothing got through at all.
             state["probes"] = probes
-            self.event("probes_changed", probes=probes, down_seconds=round(now - state["down_since"]))
+            self.event("probes_changed", outage=outage_kind(probes), probes=probes,
+                       down_seconds=round(now - state["down_since"]))
             self.save()
         down_for = now - state["down_since"]
         if down_for < self.config["reboot_after"]:
