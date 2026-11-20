@@ -1,0 +1,25 @@
+[Unit]
+Description=WAN watchdog: log internet outages and reboot the ZTE router when it stops routing
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -B /opt/wan-watchdog/wan_watchdog.py
+Restart=always
+RestartSec=10
+StateDirectory=wan-watchdog
+StateDirectoryMode=0750
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target
