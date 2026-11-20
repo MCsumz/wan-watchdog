@@ -76,8 +76,8 @@ about a minute after the request.
 On the Linux machine that should watch the router (it needs Python 3 and systemd):
 
 ```sh
-curl -L https://github.com/MCsumz/wan-watchdog/archive/refs/tags/v1.0.0.tar.gz | tar -xz
-cd wan-watchdog-1.0.0
+curl -L https://github.com/MCsumz/wan-watchdog/archive/refs/tags/v1.1.0.tar.gz | tar -xz
+cd wan-watchdog-1.1.0
 sudo sh install.sh
 ```
 
