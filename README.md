@@ -68,10 +68,12 @@ about a minute after the request.
 On the Linux machine that should watch the router (it needs Python 3 and systemd):
 
 ```sh
-git clone https://github.com/MCsumz/wan-watchdog.git
-cd wan-watchdog
+curl -L https://github.com/MCsumz/wan-watchdog/archive/refs/tags/v1.0.0.tar.gz | tar -xz
+cd wan-watchdog-1.0.0
 sudo sh install.sh
 ```
+
+(Or `git clone` the repo for the latest `main`; [releases](https://github.com/MCsumz/wan-watchdog/releases) list the changes.)
 
 The installer:
 
