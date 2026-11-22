@@ -1,5 +1,7 @@
 # WAN watchdog
 
+[![Tests](https://github.com/MCsumz/wan-watchdog/actions/workflows/tests.yml/badge.svg)](https://github.com/MCsumz/wan-watchdog/actions/workflows/tests.yml)
+
 A small Linux service that notices when the internet goes down, records the evidence, and reboots
 a ZTE 5G router through its own web API when the router has stopped routing.
 
